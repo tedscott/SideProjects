@@ -1,0 +1,68 @@
+---
+title: "Geospatial - Basemaps and Rasters"
+output: html_notebook
+---
+
+# working with maps
+
+```{r}
+library(raster)
+library(rgdal)
+#install.packages("devtools")
+library(devtools)
+#install.packages("ggmap")
+library(ggmap)
+#install.packages("maps")
+library(maps)
+
+```
+
+# create a basemap
+
+```{r}
+
+my_map <- get_stamenmap(bbox = c(left = -105.5,
+                                 bottom = 39.9,
+                                 right = -105,
+                                 top = 40.1),
+                        maptype = "terrain",
+                        crop = F,
+                        zoom = 6)
+
+ggmap(my_map)
+
+
+# the stream gauge location is Latitude: 40.051667 Longitude: 105.178333
+gauge_location <- data.frame(lon = c(-105.178333), lat = c(40.051667))
+
+# create map with that as a point
+ggmap(my_map) +
+  labs(x="", y="", title = "Stream Gauge Location") +
+  geom_point(data=gauge_location,
+             aes(x=lon, y=lat), col="red", size=5, shape=5) +
+  guides(fill=F, alpha=F, size=F)
+
+```
+
+# overlay two rasters for topography
+
+```{r}
+
+# open raster DTM data
+lidar_dem <- raster(x = "data/GeoData/earthanalyticswk3/BLDR_LeeHill/pre-flood/lidar/pre_DTM.tif")
+
+# open dem hillshade
+lidar_dem_hill <- raster(x = "data/GeoData/earthanalyticswk3/BLDR_LeeHill/pre-flood/lidar/pre_DTM_hill.tif")
+
+# plot raster data
+plot(lidar_dem_hill,
+     main = "Lidar Digital Elevation Model (DEM)\n overlayed on top of a hillshade",
+     col = grey(1:100/100),
+     legend = FALSE)
+
+# add the dem on top using add=TRUE flag
+plot(lidar_dem,
+     main = "Lidar Digital Elevation Model (DEM)",
+     add = TRUE, alpha = .5)
+```
+

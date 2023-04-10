@@ -1,0 +1,205 @@
+---
+title: "Geospatial Course Work - LIDAR Data Practice"
+output: html_notebook
+---
+
+Working through this course https://www.earthdatascience.org/courses/earth-analytics/ to learn a few things.
+
+```{r}
+library(tidyverse)
+
+getwd()
+setwd("C:/Users/tscott/OneDrive - Eastside Preparatory School/courses/DataScience_2/")
+
+options(stringsAsFactors = F)
+
+# libraries for raster data
+#install.packages("raster")
+#install.packages("rgdal")
+library(raster)
+library(rgdal)
+```
+
+# Load some data
+
+```{r}
+# use raster function to load the tif
+# DTM is digital terrain model a.k.a. digital elevation model
+# see https://www.earthdatascience.org/courses/earth-analytics/lidar-raster-data-r/lidar-chm-dem-dsm/ for image explanation
+lidar_demo <- raster(x="data/GeoData/earthanalyticswk3/BLDR_LeeHill/pre-flood/lidar/pre_DTM.tif")
+
+# plot it
+plot(lidar_demo, main="Digital Elevation Model - Pre 2013 Flood")
+
+
+
+
+```
+
+```{r}
+# zoom in on a section using xlim and ylim
+plot(lidar_demo, 
+     xlim = c(473000,474000),
+     ylim = c(4435000,4435500),
+     main="Digital Elevation Model - Pre 2013 Flood")
+```
+
+# identify coordinate reference system (CRS) of the data
+
+```{r}
+# get CRS properties
+crs(lidar_demo)
+
+# save it for later use
+myCRS <- crs(lidar_demo)
+
+# what is the extent (what are the boundaries?)
+extent(lidar_demo)
+
+# resolution is 1m by 1m since the CRS says +units=m
+xres(lidar_demo)
+yres(lidar_demo)
+
+```
+
+# inspect the data with plots
+```{r}
+glimpse(lidar_demo)
+
+# plot a histogram
+hist(lidar_demo, breaks=50,
+     main = "Distribution of surface elevation values",
+     xlab="Elevation (m)", ylab="Frequency", col="green")
+
+# looks pretty bimodal
+
+```
+
+# try a new data file
+```{r}
+
+lidar_demo2 <- raster(x="data/GeoData/earthanalyticswk3/BLDR_LeeHill/pre-flood/lidar/pre_DSM.tif")
+
+# plot it
+plot(lidar_demo2, main="Digital Surface Model - Pre 2013 Flood")
+
+```
+
+```{r}
+
+# get CRS properties
+crs(lidar_demo2)
+
+# save it for later use
+myCRS <- crs(lidar_demo2)
+
+# what is the extent (what are the boundaries?)
+extent(lidar_demo2)
+
+# resolution is 1m by 1m since the CRS says +units=m
+xres(lidar_demo)
+yres(lidar_demo)
+```
+# look into the metadata on the geotiff files
+
+```{r}
+GDALinfo("data/GeoData/earthanalyticswk3/BLDR_LeeHill/pre-flood/lidar/pre_DSM.tif")
+
+# view extent - @ symbol can extract values from S4 objects
+lidar_demo2@extent
+
+# how many layers in the raster object?
+nlayers(lidar_demo)
+
+
+```
+
+# rename the files and start working on a CHM, canopy height model
+## CHM = DSM - DTM
+
+```{r}
+lidar_dtm <- lidar_demo
+lidar_dsm <- lidar_demo2
+
+plot(lidar_dtm, main = "LIDAR Digital Terrain Model")
+plot(lidar_dsm, main = "LIDAR Digital Surface Model")
+```
+
+
+```{r}
+# now subtract them which gives the residual difference between earth's surface and the ground = heights of trees, etc
+
+lidar_chm <- lidar_dsm - lidar_dtm
+
+# view it
+plot(lidar_chm, main = "LIDAR Canopy Height Model")
+
+
+```
+
+# insert some breaks into the gradient to help things stand out
+
+```{r}
+
+plot(lidar_chm,
+     breaks = c(0, 2, 10, 20, 30),
+     main = "LIDAR Canopy Height Model",
+     col  = c("white","brown","green","darkgreen"))
+
+```
+
+# write this out to save for later
+
+```{r}
+
+# check if output dir exists
+#getwd()
+if(!dir.exists("data/GeoData/outputs")) {
+  dir.create("data/outputs", recursive = T)
+}
+
+# export the CHM geotiff file
+writeRaster(lidar_chm, "data/GeoData/outputs/lidar_chm.tiff",
+            format = "GTiff",
+            overwrite = T)
+
+
+```
+
+# challenge problem - compare pre and post flood data
+
+```{r}
+
+# get all needed files
+lidar_pre_dem <- raster(x="data/GeoData/earthanalyticswk3/BLDR_LeeHill/pre-flood/lidar/pre_DTM.tif")
+lidar_post_dem <- raster(x="data/GeoData/earthanalyticswk3/BLDR_LeeHill/post-flood/lidar/post_DTM.tif")
+lidar_pre_dsm <-  raster(x="data/GeoData/earthanalyticswk3/BLDR_LeeHill/pre-flood/lidar/pre_DSM.tif")
+lidar_post_dsm <-  raster(x="data/GeoData/earthanalyticswk3/BLDR_LeeHill/post-flood/lidar/post_DSM.tif")
+
+
+# compare dem (DTM) pre and post flood to compare ground level after flood
+lidar_resid_dem <- lidar_post_dem - lidar_pre_dem
+plot(lidar_resid_dem,
+     main = "LIDAR Elevation Changes Post-Flood")
+# maybe a tiny change on the western side?
+
+# create CHM pre and post
+lidar_pre_chm <- lidar_pre_dsm - lidar_pre_dem
+lidar_post_chm <- lidar_post_dsm - lidar_post_dem
+
+# now subtract those CHMs to see what difference in canopy height after flood
+lidar_resid_chm <- lidar_post_chm - lidar_pre_chm
+plot(lidar_resid_chm,
+     main = "LIDAR Canopy Changes Post-Flood",
+     breaks = c(-20,-10,0,10,20),
+     col=c("red","yellow","white","green","darkgreen"))
+# maybe a tiny change on the western side?
+hist(lidar_resid_chm,
+     breaks=20,
+     main = "CHM surface elevation value distribution",
+     xlab="Elevation (m)", ylab="Frequency", col="green")
+
+# a small drop in overall canopy height has the largest peak
+
+```
+

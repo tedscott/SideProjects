@@ -1,0 +1,210 @@
+---
+title: "Geospatial Course Work - Time Series Practice"
+output: html_notebook
+---
+
+Working through this course https://www.earthdatascience.org/courses/earth-analytics/ to learn a few things.
+
+```{r}
+library(tidyverse)
+
+getwd()
+setwd("C:/Users/tscott/OneDrive - Eastside Preparatory School/courses/DataScience_2/")
+
+options(stringsAsFactors = F)
+```
+
+
+
+```{r}
+# download the data file for the first lesson
+
+download.file("https://ndownloader.figshare.com/files/9282364",
+              "data/boulder-precip-temp.csv",
+              method = "libcurl")
+
+boulder_precip <- read.csv("data/GeoData/boulder-precip-temp.csv")
+str(boulder_precip)
+
+#get means
+mean(boulder_precip$PRECIP)
+mean(boulder_precip$TEMP, na.rm=T)
+
+# how can the avg be negative?
+ggplot(data=boulder_precip, aes(x=DATE, y=TEMP)) +
+  geom_point() +
+  labs(title = "Boulder temp data for part of 2013")
+```
+
+
+```{r}
+# what's up with those negatives?
+summary(boulder_precip$TEMP, na.rm=T)
+
+# looks like NAs might be encoded as -999 also
+# clean that up when reading it in
+boulder_precip <- read.csv("data/GeoData/boulder-precip-temp.csv",
+                           na.strings=c("NA"," ","-999"))
+
+
+# now all NAs should be obvious
+boulder_precip$TEMP
+
+# replot it
+ggplot(boulder_precip, aes(x=DATE, y=TEMP)) +
+  geom_point()+
+  labs(title = "Boulder temp data for part of 2013")
+  
+
+
+```
+
+```{r}
+# now plot the precip data
+boulder_precip$PRECIP
+
+# also fix the DATE column to be type data
+boulder_precip$DATE <- as.Date(boulder_precip$DATE,
+                               format="%m/%d/%y")
+
+# no NAs so we can go for it
+ggplot(data=boulder_precip, aes(x=DATE, y=PRECIP)) +
+  geom_point(aes(color=PRECIP))+
+  labs(title="Boulder precip data for part of 2013",
+       x="Date",
+       y="Precip (inches)",
+       subtitle="avg rainfall")
+
+```
+
+# OK, new data set for time series analysis
+
+```{r}
+
+# download the data
+download.file(url = "https://ndownloader.figshare.com/files/7283285",
+             destfile = "data/GeoData/805325-precip-dailysum_2003-2013.csv")
+
+# import the data
+boulder_daily_precip <- read.csv(
+  "data/GeoData/805325-precip-dailysum_2003-2013.csv", 
+  header = TRUE,
+  na.strings = c("999.99"))
+
+head(boulder_daily_precip,20)
+summary(boulder_daily_precip)
+
+# fix the dates again and remove nas
+boulder_daily_precip <- boulder_daily_precip %>%
+  mutate(DATE = as.Date(DATE,format="%m/%d/%y")) %>% 
+  na.omit()
+
+
+# graph
+ggplot(data=boulder_daily_precip, aes(x=DATE, y=DAILY_PRECIP)) +
+  geom_point() +
+  labs(title="Boulder Daily Precip 2003-2013",
+       x="Date",
+       y="Precip (in)")
+
+
+
+# subset the data based on date
+precip_boulder_AugOct <- boulder_daily_precip %>%
+  filter(DATE >= as.Date('2013-08-15') & DATE <= as.Date('2013-10-15'))
+
+
+summary(precip_boulder_AugOct$DAILY_PRECIP)
+
+# plot this new data with bar plot
+ggplot(data=precip_boulder_AugOct, aes(x=DATE, y=DAILY_PRECIP)) +
+  geom_bar(stat="identity", fill="purple") +
+  labs(title = "Daily Precip for shorter date range",
+       subtitle="Boulder, CO",
+       x="Date",
+       y="Daily Precip (in)") +
+  theme_bw()
+
+
+
+```
+
+
+# now get a bit more advanced
+
+```{r}
+
+library(lubridate)
+
+```
+```{r}
+# remind us of the data
+# graph
+ggplot(data=boulder_daily_precip, aes(x=DATE, y=DAILY_PRECIP)) +
+  geom_point() +
+  labs(title="Boulder Daily Precip 2003-2013",
+       x="Date",
+       y="Precip (in)")
+
+# facet by year this time but use julian day on x
+boulder_daily_precip %>%
+  ggplot(aes(x=JULIAN, y=DAILY_PRECIP)) +
+  geom_point(color="purple") +
+  facet_wrap(~ YEAR) +
+  labs(title="Precipitation in Boulder, CO",
+       x="Day of year",
+       y="Daily Precip (in)") +
+  theme_bw() #+
+  #scale_x_date(date_breaks="5 years", date_labels = "%m-%Y")
+
+
+```
+
+# there was a flood in the aug/oct timeframe so filter down to that
+
+
+```{r}
+
+boulder_daily_precip %>%
+  filter(JULIAN > 230 & JULIAN < 290) %>%
+  ggplot(aes(x=JULIAN, y=DAILY_PRECIP)) +
+  geom_bar(stat="identity", fill="purple") +
+  facet_wrap(~ YEAR, ncol=3) +
+  labs(title="Precipitation in Boulder, CO",
+       x="Day of year",
+       y="Daily Precip (in)") +
+  theme_bw()
+
+
+
+```
+
+# now do it by month by creating a column
+```{r}
+
+boulder_daily_precip_month <- boulder_daily_precip %>%
+  mutate(month = month(DATE))
+
+
+# group by month and year so that it is the monthly total in each year
+boulder_daily_precip_month <- boulder_daily_precip_month %>%
+  group_by(month, YEAR) %>%
+  summarise(sum_precip = sum(DAILY_PRECIP))
+
+
+# mess with month format to make it date type
+# so it can be used in scale_x_date
+boulder_daily_precip_month %>%
+  mutate(month2=as.Date(paste0("2015-",month,"-01"),"%Y-%m-%d")) %>%
+  ggplot(aes(x=month2, y=sum_precip)) +
+  geom_bar(stat="identity", fill="purple") +
+  facet_wrap(~ YEAR) +
+  labs(title="Monthly Precipitation in Boulder, CO",
+       x="Month",
+       y="Daily Precip (in)") +
+  theme_bw() +
+  scale_x_date(date_labels = "%b")
+
+
+```
+

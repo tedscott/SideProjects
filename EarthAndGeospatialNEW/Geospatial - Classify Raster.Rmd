@@ -1,0 +1,267 @@
+---
+title: "Geospatial - Classify a Raster"
+output: html_notebook
+---
+
+Working through this course https://www.earthdatascience.org/courses/earth-analytics/ to learn a few things.
+
+# Lesson 5: Classify a Raster
+
+```{r}
+library(tidyverse)
+
+getwd()
+setwd("C:/Users/tscott/OneDrive - Eastside Preparatory School/courses/DataScience_2/")
+
+options(stringsAsFactors = F)
+
+# libraries for raster data
+#install.packages("raster")
+#install.packages("rgdal")
+library(raster)
+library(rgdal)
+```
+
+# load dataset
+## goal is to classify objects in raster by height
+
+```{r}
+
+lidar_chm <- raster("data/GeoData/earthanalyticswk3/BLDR_LeeHill/outputs/lidar_chm.tif")
+
+# goal is to use 3 classes, what are min and max?
+summary(lidar_chm)
+
+
+# plot histogram and zoom in a bit
+hist(lidar_chm,
+     main="Distribution of raster cell values in the CHM for LeeHill",
+     xlab="Height(m)", ylab="Pixels", col="green",
+     xlim=c(2,25),
+     ylim=c(0,1000),
+     breaks=100)
+
+# plot with specific breaks
+hist(lidar_chm,
+     main="Distribution of raster cell values in the CHM for LeeHill",
+     xlab="Height(m)", ylab="Pixels", col="green",
+     breaks=c(0,5,10,15,20,25,30))
+
+```
+
+# create custom breaks based on tree sizes
+0-2 = no trees (data below 2 is unreliable in this case)
+2-4 = short trees
+4-7 = med trees
+.> 7 = tall trees
+
+```{r}
+hist(lidar_chm,
+     main="Distribution of raster cell values in the CHM for LeeHill",
+     xlab="Height(m)", ylab="Pixels", col="green",
+     breaks=c(0,2,4,7,30))
+
+
+
+
+```
+
+# Map those raster values to new values (reclassify)
+0 - 2m = NA
+2 - 4m = 1
+4 - 7m = 2
+. > 7m = 3
+
+```{r}
+# create reclass matrix
+reclass_df <- c(0,2,NA,
+                2,4,1,
+                4,7,2,
+                7,Inf,3)
+
+reclass_m <-  matrix(reclass_df, ncol=3,byrow=T)
+
+# check it out
+reclass_m
+
+
+# use reclassify()
+chm_classified <- reclassify(lidar_chm, reclass_m)
+
+# use barplot to show classes
+barplot(chm_classified,
+        main="Number of pixels in each height class")
+
+# assign all pixels of class 0 to be NA
+chm_classified[chm_classified == 0] <- NA
+
+# they no don't show up
+barplot(chm_classified,
+        main="Number of pixels in each height class")
+
+# plot the reclassified data in raster view
+plot(chm_classified, col= c("red","blue","green"))
+# that looks wrong as it is assuming continuous y
+
+# try again
+plot(chm_classified,
+     legend = F,
+     col=c("red","blue","green"),
+     axes = F,
+     main= "Classified Canopy Height Model \n short, medium, tall trees")
+
+legend("topright",
+       legend=c("short trees (2-4m)", "medium trees (4-7m)", "tall trees (>7 m)"),
+       fill=c("red","blue","green"),
+       border=F,
+       bty="n")
+
+
+
+```
+
+# be more intentional with colors
+
+```{r}
+# create color object with nice new colors!
+chm_colors <- c("palegoldenrod", "palegreen2", "palegreen4")
+
+# plot reclassified data
+plot(chm_classified,
+     legend = FALSE,
+     col = chm_colors,
+     axes = FALSE,
+     # remove the box around the plot
+     box = FALSE,
+     main = "Classified Canopy Height Model \n short, medium, tall trees")
+
+legend("topright",
+       legend = c("short trees", "medium trees", "tall trees"),
+       fill = chm_colors,
+       border = FALSE,
+       bty = "n")
+
+
+```
+
+# challenge problem - create classified raster showing changes in canopy height (+ and -) before and after the flood
+
+```{r}
+
+# need to have chm from pre-flood and chm from post-flood
+# then classify the data as above
+
+# read in the DTM and DSM for pre and post to generate CHM
+lidar_pre_dem <- raster(x="data/GeoData/earthanalyticswk3/BLDR_LeeHill/pre-flood/lidar/pre_DTM.tif")
+lidar_post_dem <- raster(x="data/GeoData/earthanalyticswk3/BLDR_LeeHill/post-flood/lidar/post_DTM.tif")
+lidar_pre_dsm <-  raster(x="data/GeoData/earthanalyticswk3/BLDR_LeeHill/pre-flood/lidar/pre_DSM.tif")
+lidar_post_dsm <-  raster(x="data/GeoData/earthanalyticswk3/BLDR_LeeHill/post-flood/lidar/post_DSM.tif")
+
+# create CHM pre and post
+lidar_pre_chm <- lidar_pre_dsm - lidar_pre_dem
+lidar_post_chm <- lidar_post_dsm - lidar_post_dem
+
+# now subtract those CHMs to see what difference in canopy height after flood
+lidar_resid_chm <- lidar_post_chm - lidar_pre_chm
+plot(lidar_resid_chm,
+     main = "LIDAR Canopy Changes Post-Flood",
+     breaks = c(-20,-10,0,10,20),
+     col=c("red","yellow","white","green","darkgreen"))
+# maybe a tiny change on the western side?
+hist(lidar_resid_chm,
+     breaks=50,
+     main = "CHM surface elevation value distribution",
+     xlab="Elevation (m)", ylab="Frequency", col="green")
+
+# check ranges
+summary(lidar_resid_chm)
+
+# lots of NAs - should use barplot
+# classify into positive and negative
+
+# create reclass matrix, between -2 and 2m should be NA due to instrument
+# sensistivity
+reclass_df2 <- c(-Inf,-2,1,
+                 -2,2,NA,
+                  2,Inf,2)
+
+reclass_m2 <-  matrix(reclass_df2, ncol=3,byrow=T)
+
+# check it out
+reclass_m2
+
+
+# use reclassify()
+resid_chm_classified <- reclassify(lidar_resid_chm, reclass_m2)
+
+summary(resid_chm_classified)
+
+# use barplot to show classes
+barplot(resid_chm_classified,
+        main="Number of pixels in each height class")
+
+# assign all pixels of class 0 to be NA
+resid_chm_classified[resid_chm_classified == 0] <- NA
+
+# they no don't show up
+barplot(resid_chm_classified,
+        main="Number of pixels in each height class")
+
+# two classes, so I guess it is working?
+plot(resid_chm_classified)
+
+
+# need to bucket so it isn't continuous
+plot(resid_chm_classified,
+     legend = F,
+     col=c("red","green"),
+     axes = F,
+     main= "Classified CHM difference pre vs post-flood")
+
+legend("topright",
+       legend=c("negative changes (< -2m)", "positive changes (> 2m)"),
+       fill=c("red","green"),
+       border=F,
+       bty="n")
+
+
+```
+# I guess it worked?
+
+# CROP a raster to clean up edges
+
+```{r}
+
+# need shapefile library
+#install.packages("sf")
+library(sf)
+
+
+# open the chm created before
+lidar_chm <- raster("data/GeoData/outputs/lidar_chm.tiff")
+summary(lidar_chm)
+
+# plot it
+plot(lidar_chm,
+     col = rev(terrain.colors(50)))
+
+# open vector layer to use for cropping
+crop_extent <- readOGR("data/GeoData/earthanalyticswk3/BLDR_LeeHill/clip-extent.shp")
+
+
+plot(crop_extent, 
+     main="Shapefile to use for cropping",
+     axes=T,
+     border="blue")
+
+
+
+# use it to crop and then plot both
+lidar_chm_crop <- crop(lidar_chm, crop_extent)
+plot(lidar_chm_crop, main="Cropped lidar CHM")
+plot(crop_extent, add=T)
+
+# looks nice
+
+```
+

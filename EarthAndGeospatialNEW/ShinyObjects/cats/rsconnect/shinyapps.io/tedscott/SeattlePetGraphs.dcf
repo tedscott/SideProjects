@@ -1,0 +1,13 @@
+name: SeattlePetGraphs
+title: SeattlePetGraphs
+username:
+account: tedscott
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 7526830
+bundleId: 6476464
+url: https://tedscott.shinyapps.io/SeattlePetGraphs/
+when: 1667585319.06942
+lastSyncTime: 1667585319.06944
+asMultiple: FALSE
+asStatic: FALSE

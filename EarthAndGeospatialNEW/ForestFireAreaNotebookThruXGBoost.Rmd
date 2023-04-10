@@ -1,0 +1,462 @@
+---
+title: "Forest Fire Area Prediction"
+output: html_notebook
+---
+
+## Using a few ML algorithms, predict the area of a forest fire based on meteorological conditions, per the data set (<https://archive.ics.uci.edu/ml/datasets/forest+fires>) and approach outlined in [Cortez and Morais, 2007] P. Cortez and A. Morais. A Data Mining Approach to Predict Forest Fires using Meteorological Data.
+
+### Compare the efficiency, error, and accuracy of each algorithm employed
+
+### set working directory and load needed packages
+
+```{r, setup}
+knitr::opts_knit$set(root.dir = 'C:/Users/tscott/')
+```
+
+```{r}
+# load packages
+library(tidyverse) #for ggplot and dplyr
+library(corrplot) #for correlation plots
+
+```
+
+### Get the data
+
+Pre-downloaded from <https://archive.ics.uci.edu/ml/datasets/forest+fires>
+
+```{r}
+forestRaw <- read.csv("./OneDrive - Eastside Preparatory School/Courses/DataScience_2/data/forestfires.csv")
+```
+
+### From the documentation for the data set
+
+Attribute information:
+
+For more information, read [Cortez and Morais, 2007].
+
+1.  X - x-axis spatial coordinate within the Montesinho park map: 1 to 9
+2.  Y - y-axis spatial coordinate within the Montesinho park map: 2 to 9
+3.  month - month of the year: "jan" to "dec"
+4.  day - day of the week: "mon" to "sun"
+5.  FFMC - FFMC index from the FWI system: 18.7 to 96.20
+6.  DMC - DMC index from the FWI system: 1.1 to 291.3
+7.  DC - DC index from the FWI system: 7.9 to 860.6
+8.  ISI - ISI index from the FWI system: 0.0 to 56.10
+9.  temp - temperature in Celsius degrees: 2.2 to 33.30
+10. RH - relative humidity in %: 15.0 to 100
+11. wind - wind speed in km/h: 0.40 to 9.40
+12. rain - outside rain in mm/m2 : 0.0 to 6.4
+13. area - the burned area of the forest (in ha): 0.00 to 1090.84 (this output variable is very skewed towards 0.0, thus it may make sense to model with the logarithm transform).
+
+Need to watch out for correlations, e.g., the Initial Spread Index (ISI) is a numeric rating of the expected rate of fire spread. It is based on wind speed and FFMC.
+
+More deets: <https://wikifire.wsl.ch/tiki-indexbdbc.html?page=Canadian+forest+fire+weather+index+system>
+
+### Inspect it and check for correlations
+
+```{r}
+summary(forestRaw)
+
+# might want to set the month and day to factors
+# but for correlation we can only use numeric values
+
+forestNum <- forestRaw %>% select(-month, -day)
+corrs <- cor(forestNum)
+corrplot(corrs, order = 'hclust', addrect = 2)
+```
+
+### Quite a bit of correlation, especially between temp and the FWI values. Note that there are NO strong correlations with our goal, area
+
+### Having variables that correlate strongly can both make your model worse and make it prone to overfitting - training well on the train data and poor performance on anything else
+
+### When you read the paper by the authors [Cortez and Morais, 2007], you'll notice they took
+
+$ln(area + 1)$
+
+### (area + 1 to avoid log of zero) so the range wasn't so high. Let's do that. But we have to remember to do
+
+$e^x-1$ afterward to get back to actual area
+
+```{r}
+forestNum <- forestNum %>% mutate(logArea = log(area+1))
+summary(forestNum)
+```
+
+## multi-linear regression
+
+### We'll naively try with all the numeric values. We're doing no normalization and not removing any that correlate with others, so we don't expect a great result.
+
+```{r}
+# We're going to use 80% of the rows to train the model
+# then test it out on the remaining 20% of the data
+
+# Create Training and Test data -
+set.seed(732)  # setting seed to reproduce results of random sampling
+
+# create row indices for training data
+# sample will choose random row numbers (80% of the total number of rows)
+trainingRowIndex <- sample(1:nrow(forestNum), 0.8*nrow(forestNum)) 
+
+# use those row numbers to split up the data into rows for training 
+# and rows for testing
+
+# model training data are the rows that sample identified above
+trainingData <- forestNum[trainingRowIndex, ]  
+
+# model test data are the remaining rows
+# the minus sign says  to take "all rows but those in trainingRowIndex"
+testData  <- forestNum[-trainingRowIndex, ]
+
+# make the model
+# remember to use the logArea outcome rather than area
+mlrModel <- lm(data=trainingData, logArea ~ .-area)
+summary(mlrModel)
+```
+
+### Wow, only wind among the variables is significant, with high p-values for most 0.05 and an overall p-value of 0.218 with a terrible R-squared as well
+
+### The median residual value is -0.585, and remember that is in log units so not very close to zero. We should look at a Q-Q plot and histogram of the residuals but it is safe to say they won't be good
+
+```{r}
+# Q-Q plot is a test for normally distributed residuals (2nd plot in the sequence)
+# should be on a 45 deg line with little deviation
+plot(mlrModel)
+
+# histogram shows us something similar
+ggplot(data=mlrModel, aes(x=mlrModel$residuals)) + geom_histogram()
+```
+
+## Finally, let's look at our main measure of goodness we'll be using, the RMSE (root mean squared error)
+
+$RMSE = \sqrt{\frac{\sum(\hat{y}_i - y_i)^2}{n}}$
+
+```{r}
+# get values the model predicts for the test set
+predictedArea <- predict(mlrModel, newdata=testData)
+
+# calculation root mean squared error
+(rmse_mlr <- sqrt(mean((predictedArea - testData$logArea) ^ 2, na.rm = TRUE)))
+
+```
+
+### We'll need that many times, so let's make an RMSE function to use
+
+```{r}
+myRMSE <- function(pred, obs) {
+  return(sqrt(mean((pred - obs) ^ 2, na.rm = TRUE)))
+}
+
+
+# make sure it works
+myRMSE(predictedArea,testData$logArea )
+```
+
+### Note that this is the error for the natural logged data and it still really sucks - we're way off of a decent model (which we might have predicted from the high median residuals and terrible stats)
+
+## Do we give up? Heck no! There are other algorithms!
+
+
+## Decision Tree
+
+```{r}
+# packages for decision trees
+#install.packages(c("rpart","rpart.plot","rattle"))
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+
+# build the tree
+start1 <- Sys.time()
+myTree <- rpart(data=trainingData, logArea ~ .-area, method='anova')
+end1 <- Sys.time()          # Finishing time
+(time1 <- end1 - start1) # total time
+
+# check it out and plot the tree
+#plot(myTree)
+#text(myTree,pretty=0)
+summary(myTree)
+fancyRpartPlot(myTree)
+
+
+```
+
+## Check predictions and RMSE
+
+```{r}
+# get predictions
+predict_tree <- predict(myTree, newdata=testData, type='vector')
+
+# compute RMSE
+myRMSE(predict_tree, testData$logArea)
+
+```
+### This RMSE is actually worse than the multi-linear model
+### Try adjusting the complexity parameter (default model has cp = 0.02246242) from the summary()
+
+```{r}
+# check how error and cp vary
+# looks like it can't get any better 
+# (larger cp would likely produce a single node)
+printcp(myTree)
+plotcp(myTree)
+
+# prune it with larger and smaller
+prunedTreeMoreCP <- prune.rpart(myTree,cp=0.025)
+fancyRpartPlot(prunedTreeMoreCP)
+
+prunedTreeLessCP <- prune.rpart(myTree, cp=0.005)
+fancyRpartPlot(prunedTreeLessCP)
+
+predicted_tree_largeCP <- predict(prunedTreeMoreCP, testData)
+predicted_tree_smallCP <- predict(prunedTreeLessCP, testData)
+
+```
+
+## Check RMSE for each of these pruned trees
+
+```{r}
+(rmseBigCP <- myRMSE(predicted_tree_largeCP, testData$logArea))
+(rmseSmallCP <- myRMSE(predicted_tree_smallCP, testData$logArea))
+
+```
+## Wow, the larger CP tree, that shows only one node, has a slightly better RMSE than the multilinear model (1.377032)!
+
+
+## Time for Random Forest
+
+```{r}
+# libraries
+#install.packages("randomForest")
+library(randomForest)
+
+
+# make the forests
+start1 <- Sys.time()
+myForest <- randomForest(data=trainingData, logArea ~ .-area)
+end1 <- Sys.time()          # Finishing time
+(time1 <- end1 - start1) # total time
+
+# takes quite a bit longer than decision tree
+
+# check it out 
+myForest
+
+# best model?
+which.min(myForest$mse)
+
+# RMSE of that model?
+sqrt(myForest$mse[which.min(myForest$mse)])
+
+```
+### darn, this RMSE is still not as good as multi-linear model. Using 215 trees!
+
+```{r}
+# What other amounts can we try based on the error plot?
+plot(myForest)
+
+# looks like potentially other candidates but 215 does look to be the min 
+
+# how about variable importance
+varImpPlot(myForest)
+```
+
+### not surprisingly, temp, RH, and DMC (Duff moisture code, so probably some kind of wetness) are the most important
+
+### Time to adjust some parameters for the random forest 
+
+example for tuneRF from https://www.statology.org/random-forest-in-r/ 
+model_tuned <- tuneRF(
+               x=airquality[,-1], #define predictor variables
+               y=airquality$Ozone, #define response variable
+               ntreeTry=500,
+               mtryStart=4, 
+               stepFactor=1.5,
+               improve=0.01,
+               trace=FALSE #don't show real-time progress
+               )
+
+```{r}
+ncol(trainingData)
+str(trainingData)
+
+# we will want to use columns 1-10 for the tuneRF()
+
+# tune it by messing with starting # of trees, identify best mtry and step
+tunedForest <- tuneRF(
+  x=trainingData[,1:10],
+  y=trainingData$logArea,
+  ntreeTry=500,
+  #mtryStart = 1, #floor(sqrt(ncol(trainingData)-2)),# sqrt number of predictors
+  stepFactor = 0.5,
+  improve=0.01,
+  trace=FALSE
+)
+
+# seems like a lower error with mtry=1
+myTunedForest <- randomForest(data=trainingData, 
+                              logArea ~ .-area, 
+                              mtry=1)
+
+# check it out 
+myTunedForest
+
+# best model?
+which.min(myTunedForest$mse)
+
+# RMSE of that model?
+sqrt(myTunedForest$mse[which.min(myTunedForest$mse)])
+
+
+```
+
+### slightly lower RMSE for the forest with 159 trees instead of 215
+
+### use that tuned model for predictions
+```{r}
+predictForest <- predict(myTunedForest, testData)
+
+(myTunedForestRMSE <- myRMSE(predictForest, testData$logArea))
+
+
+```
+### TA-DA! A slight improvement in RMSE with this forest!
+
+
+
+## Time for XGBoost!
+
+```{r}
+
+## Got some guidance from https://www.statology.org/xgboost-in-r/ 
+
+#install.packages("xgboost")
+library(xgboost)
+
+set.seed(732)
+
+# prepare train and test by building matrix objects that XGBoost expects
+colnames(trainingData)
+
+# want columns 1-10 as features and 12 as the label (outcome)
+train_x <- data.matrix(trainingData[,1:10])
+train_y <- trainingData[,12]
+
+test_x <- data.matrix(testData[,1:10])
+test_y <- testData[,12]
+
+#define final training and testing sets
+xgb_train = xgb.DMatrix(data = train_x, label = train_y)
+xgb_test = xgb.DMatrix(data = test_x, label = test_y)
+
+#define watchlist
+watchlist = list(train=xgb_train, test=xgb_test)
+
+#fit XGBoost model and display training and testing data at each round
+model = xgb.train(data = xgb_train, max.depth = 3, watchlist=watchlist, nrounds = 50)
+
+
+
+```
+
+### best model happened in round 2 with RMSE 1.335, an improvement! Let's build that model and then we can later tweak some parameters.
+
+```{r}
+#define final model
+final = xgb.train(data = xgb_train, max.depth = 3, nrounds = 2, verbose = 0)
+
+# use it to predict and confirm RMSE
+pred_xgb <- predict(final, test_x)
+
+# get RMSE - same as above 1.3355
+(myRMSE(pred_xgb, test_y))
+
+# variable importance?
+importance_matrix <- xgb.importance(model = final)
+xgb.plot.importance(importance_matrix, xlab = "Feature Importance")
+
+
+```
+### we see that XGBoost has penalized several of the features (with its built in L1 and L2 regularization) so that the remaining best features are temperature, wind, DMC, RH, and FFMC
+
+
+### let's do a grid search to find the best parameters using the code from the r-bloggers post I referenced in class
+
+```{r}
+
+## Code from https://www.r-bloggers.com/2020/11/r-xgboost-regression/
+
+#################
+#grid search
+#create hyperparameter grid
+hyper_grid <- expand.grid(max_depth = seq(2, 8, 1),
+                          eta = seq(.05, .45, .01))
+xgb_train_rmse <- NULL
+xgb_test_rmse <- NULL
+
+for (j in 1:nrow(hyper_grid)) {
+  set.seed(732)
+  m_xgb_untuned <- xgb.cv(
+    data = train_x,
+    label = train_y,
+    nrounds = 500,
+    objective = "reg:squarederror",
+    early_stopping_rounds = 3,
+    nfold = 5,
+    max_depth = hyper_grid$max_depth[j],
+    eta = hyper_grid$eta[j],
+    verbose = FALSE
+  )
+  
+  xgb_train_rmse[j] <- m_xgb_untuned$evaluation_log$train_rmse_mean[m_xgb_untuned$best_iteration]
+  xgb_test_rmse[j] <- m_xgb_untuned$evaluation_log$test_rmse_mean[m_xgb_untuned$best_iteration]
+  
+  cat(j, "\n")
+}
+
+#ideal hyperparamters
+hyper_grid[which.min(xgb_test_rmse), ]
+
+```
+
+### OK, with those parameters, build that model and allow for more rounds
+
+```{r}
+
+#define final model
+finalXGB = xgb.train(data = xgb_train, 
+                   max.depth = 2, 
+                   watchlist=watchlist, 
+                   eta=0.24,
+                   lambda = 0.1,
+                   alpha = 0.9,
+                   nrounds = 500, 
+                   verbose = 1)
+
+# round 3 is best testRMSE (1.330)
+finalXGB = xgb.train(data = xgb_train, 
+                   max.depth = 2, 
+                   watchlist=watchlist, 
+                   eta=0.24, 
+                   nrounds = 4, 
+                   verbose = 0)
+
+# use it to predict and confirm RMSE
+pred_xgb <- predict(finalXGB, test_x)
+
+# get RMSE - same as above 1.3355
+print('The best model RMSE is')
+(myRMSE(pred_xgb, test_y))
+
+# variable importance?
+importance_matrix <- xgb.importance(model = final)
+xgb.plot.importance(importance_matrix, xlab = "Feature Importance")
+
+```
+
+
+
+## Hooray, got an even better RMSE with that bit of tuning. Now have a model with a RMSE = 1.321
+
+
+

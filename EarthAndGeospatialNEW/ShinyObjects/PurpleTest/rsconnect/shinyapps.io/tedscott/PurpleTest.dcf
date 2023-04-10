@@ -1,0 +1,13 @@
+name: PurpleTest
+title: PurpleTest
+username:
+account: tedscott
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 7416375
+bundleId: 6468939
+url: https://tedscott.shinyapps.io/PurpleTest/
+when: 1667422090.53194
+lastSyncTime: 1667422090.53196
+asMultiple: FALSE
+asStatic: FALSE
