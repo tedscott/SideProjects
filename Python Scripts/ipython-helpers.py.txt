@@ -1,0 +1,30 @@
+#ipython helpers
+# to start the notebook 'ipython notebook' from an anaconda cmd prompt
+# do the following imports
+import numpy as np
+import math
+import sympy
+#from sympy import *
+import scipy
+import sklearn
+import psutil
+import pandas
+import IPython.parallel
+import matplotlib.pyplot as plt
+
+# this line will ensure plots are inline in the notebook
+%matplotlib inline
+
+#to check if numpy is working
+numpy._path_
+numpy._version_
+a=np.array([1,2,3])
+np.pi
+
+# to check if matplotlib is working
+x = np.arange(0, 10, 0.1);
+y = np.sin(x)
+plt.plot(x, y,'-o')
+
+plt.plot(x,x)
+plt.plot(x,x**2)
