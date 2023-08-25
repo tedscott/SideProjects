@@ -16,7 +16,7 @@ library(leaflet)
 
 # define helper functions
 
-# per EPA formula
+# per US EPA formula
 Calc_AQI <- function(Cp, Ih, I1, BPh, BP1) {
   a <- (Ih - I1)
   b <- (BPh - BP1)
@@ -39,7 +39,7 @@ AQI_from_PM <- function(pm25) {
   else return (NaN) # was not valid pm25
 }
 
-# healthrating string
+# healthrating string per US EPA
 healthrating <- function(AQI) {
   return (case_when(is.nan(AQI) ~ "Unknown",
                     (0 <= AQI & AQI <= 50) ~ "Good",
@@ -49,6 +49,16 @@ healthrating <- function(AQI) {
                     (201 <= AQI & AQI <= 300) ~ "Very Unhealthy",
                     TRUE ~ "Hazardous"
   ))
+}
+
+# per https://www.tandfonline.com/doi/full/10.1080/10962247.2020.1797927
+# Canadian AQHI+
+Calc_AQHIplus <- function(pm25) {
+  #check if valid
+  if(pm25 > 0 & pm25 < 1000) {
+    return(ceiling(pm25/10.0)) 
+  }
+  else return(NaN) # was not a valid pm25
 }
 
 # unit conversions
@@ -67,7 +77,7 @@ convert_mbar_to_inHg <- function(mbar) {
 ui <- fluidPage(
 
     # Application title
-    titlePanel("AQI from Spiritbrook PurpleAir Sensor"),
+    titlePanel("Air Quality from PacSpi-Sasamat PurpleAir Sensor"),
 
     #fluidRow(
     
@@ -76,8 +86,8 @@ ui <- fluidPage(
           sidebarPanel(
               radioButtons("tempscale",
                           "Temperature Units:",
-                          c("Fahrenheit" = "F",
-                            "Celsius" = "C")),
+                          c("Celsius" = "C",
+                            "Fahrenheit" = "F")),
               br(),
               
               radioButtons("pressurescale",
@@ -92,8 +102,9 @@ ui <- fluidPage(
             textOutput(outputId = "lastseen"),
             h4("Temperature"),
             textOutput(outputId = "tempchoice"),
-            h4("AQI"),
+            h4("Air Quality"),
             textOutput(outputId = "AQIvalue"),
+            textOutput(outputId = "AQHIplusvalue"),
             h4("Pressure"),
             textOutput(outputId = "pressurechoice")
             
@@ -132,12 +143,14 @@ server <- function(input, output) {
   
   # add AQI as a column and healthrating for that AQI
   sensordata <- sensordata %>% mutate(US_EPA_PM25_AQI = AQI_from_PM(stats.pm2.5_10minute), 
-                                      HealthLevel = healthrating(US_EPA_PM25_AQI))
+                                      HealthLevel = healthrating(US_EPA_PM25_AQI),
+                                      AQHIplus = Calc_AQHIplus(stats.pm2.5_60minute))
   
-  # make outputs
+  # make string outputs from values
   last_seen <- as.character(as.POSIXct(sensordata$last_seen, tz='PST8PDT', origin = "1970-01-01"))
   AQI_value <- as.character(sensordata$US_EPA_PM25_AQI)
   Health_level <- as.character(sensordata$HealthLevel)
+  AQHI_plus <- as.character(sensordata$AQHIplus)
   
   
   #OUTPUTS
@@ -160,7 +173,11 @@ server <- function(input, output) {
   })
   
   output$AQIvalue <- renderText({
-    paste0("The AQI is ", AQI_value, " which is ", Health_level)
+    paste0("The US-EPA AQI is ", AQI_value, " which is ", Health_level)
+  })
+  
+  output$AQHIplusvalue <- renderText({
+    paste0("The AQHI+ is ", AQHI_plus)
   })
   
   output$purplemap <- renderLeaflet({
@@ -169,6 +186,7 @@ server <- function(input, output) {
     popupText = paste0("<b> As of: </b>", as.character(as.POSIXct(sensordata$last_seen, tz='PST8PDT', origin = "1970-01-01")), " Pacific<br>",
                        "<b>AQI: </b>", as.character(sensordata$US_EPA_PM25_AQI), "<br>",
                        "<b>AQI Health Rating: </b>", as.character(sensordata$HealthLevel), "<br>",
+                       "<b>AQHI+ Rating: </b>", as.character(sensordata$AQHIplus), "<br>",
                        "<b>Temp (&#176;C): </b>", as.character(convert_FtoC(sensordata$temperature)), "<br>",
                        "<b>Temp (&#176;F): </b>", as.character(sensordata$temperature), "<br>",
                        "<b>Pressure (mbar): </b>", as.character(sensordata$pressure), "<br>",
