@@ -5,7 +5,7 @@ account: tedscott
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 7416375
-bundleId: 7602562
+bundleId: 7617579
 url: https://tedscott.shinyapps.io/PurpleTest/
 asMultiple: FALSE
 asStatic: FALSE

@@ -135,8 +135,9 @@ server <- function(input, output) {
   rawdata = fromJSON(response)
   
   # corrections
-  rawdata$sensor$temperature - 8
-  rawdata$sensor$humidity + 4
+  rawdata$sensor$temperature <- rawdata$sensor$temperature - 8
+  rawdata$sensor$humidity <- rawdata$sensor$humidity + 4
+  #rawdata$sensor$pressure <- rawdata$sensor$pressure + 306 # because it seems to be this low
   
   # to get to the sensor data can build a DF from the sensor data blob
   sensordata <- data.frame(rawdata$sensor)
@@ -173,7 +174,7 @@ server <- function(input, output) {
   })
   
   output$AQIvalue <- renderText({
-    paste0("The US-EPA AQI is ", AQI_value, " which is ", Health_level)
+    paste0("The US-EPA AQI (no conversion) is ", AQI_value, " which is ", Health_level)
   })
   
   output$AQHIplusvalue <- renderText({
