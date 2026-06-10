@@ -1,0 +1,15 @@
+[
+  {
+    "footprint_type": "carbon",
+    "scope": "operational",
+    "zone": "IE",
+    "unit": "gCO2/kWh",
+    "coverage": "global",
+    "start": "2026-06-03T00:00:00Z",
+    "end": "2026-06-09T00:00:00Z",
+    "value": 119.44173611111111,
+    "valid": true,
+    "zone_status": "preview",
+    "aggregation_method": "time-weighted-average"
+  }
+]
